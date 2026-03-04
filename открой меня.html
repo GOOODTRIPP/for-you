@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>For You</title>
+
+  <!-- ══════════════════════════════════════════════════════
+       PWA META TAGS — дозволяє встановити як додаток на iOS
+  ══════════════════════════════════════════════════════════ -->
+  <!-- Ім'я під іконкою на робочому столі -->
+  <meta name="apple-mobile-web-app-title" content="For You" />
+  <!-- Повноекранний режим (без браузерного рядка Safari) -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <!-- Колір статус-бару: white = білий текст на темному фоні -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <!-- Android / Chrome PWA -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#c0392b" id="theme-color-meta" />
+  <!-- SEO / sharing -->
+  <meta name="description" content="A little love letter for you 💌" />
+
+  <!-- Іконка для iOS (генерується через Canvas при першому запуску) -->
+  <!-- Запасна іконка через emoji у title -->
+
+  <!-- PWA Manifest (inline через blob, без окремого файлу) -->
+  <link id="pwa-manifest" rel="manifest" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Playfair+Display:ital@1&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg-top:          #c0392b;
+      --bg-bottom:       #e67e22;
+      --envelope:        #f5e6c8;
+      --envelope-shadow: #c8a96e;
+      --envelope-dark:   #d4b483;
+      --flap:            #ecddb0;
+      --note-bg:         #fffdf4;
+      --ink:             #b01010;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { height: 100%; }
+
+    body {
+      min-height: 100%;
+      min-height: 100dvh; /* dynamic viewport height для iOS Safari */
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(160deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+      overflow: hidden;
+      font-family: 'Playfair Display', serif;
+      cursor: default;
+      /* Safe area для iPhone з чёлкою */
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* ══ КОНВЕРТ ═══════════════════════════════════════════ */
+    #scene {
+      position: relative; width: 300px; height: 220px;
+      cursor: pointer; user-select: none; z-index: 2;
+      /* Перспектива для 3D-флапу */
+      perspective: 600px;
+    }
+
+    #envelope {
+      position: absolute; inset: 0;
+      background: var(--envelope);
+      border-radius: 4px 4px 8px 8px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 -2px 8px rgba(0,0,0,.08);
+      transition: transform .3s ease, box-shadow .3s ease;
+      overflow: hidden; /* ховаємо гострий кут під печаткою */
+    }
+    #envelope:hover { transform: scale(1.03); box-shadow: 0 28px 72px rgba(0,0,0,.45); }
+
+    /* Бокові трикутні складки */
+    #envelope::before, #envelope::after {
+      content: ''; position: absolute; bottom: 0; width: 0; height: 0;
+      border-bottom: 110px solid var(--envelope-dark);
+      z-index: 1;
+    }
+    #envelope::before { left: 0;  border-right: 150px solid transparent; }
+    #envelope::after  { right: 0; border-left:  150px solid transparent; }
+
+    /* Нижній центральний трикутник — тепер ПРИХОВАНИЙ під печаткою.
+       Ми перефарбовуємо його в колір тіла конверту, щоб шов не видно */
+    #fold-bottom {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 0;
+      border-left: 150px solid transparent; border-right: 150px solid transparent;
+      border-bottom: 110px solid var(--envelope);
+      /* Трохи темніший відтінок для легкого рельєфу */
+      filter: brightness(0.96);
+      pointer-events: none; z-index: 2;
+    }
+
+    /* Горизонтальна лінія згину (декоративна) */
+    #envelope-line {
+      position: absolute; top: 50%; left: 5%; right: 5%;
+      height: 1px; background: var(--envelope-dark); opacity: .35; pointer-events: none;
+      z-index: 3;
+    }
+
+    /* ── КЛАПАН (верхній трикутник) ── */
+    #flap-wrap {
+      position: absolute; top: -1px; left: -1px; right: -1px;
+      height: 115px; /* висота рівна висоті трикутника */
+      transform-origin: top center;
+      transform-style: preserve-3d;
+      transition: transform .65s cubic-bezier(.4,0,.2,1);
+      z-index: 15;
+    }
+    #flap-wrap.open { transform: rotateX(180deg); }
+
+    #flap {
+      position: absolute; top: 0; left: 0; right: 0; height: 0;
+      border-left: 151px solid transparent; border-right: 151px solid transparent;
+      border-top: 115px solid var(--flap);
+      filter: drop-shadow(0 6px 8px rgba(0,0,0,.18));
+    }
+
+    /* ── ВОСКОВА ПЕЧАТКА ── */
+    #seal {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 48px; height: 48px;
+      background: radial-gradient(circle at 35% 35%, #e84040, #8b0000);
+      border-radius: 50%;
+      box-shadow: 0 4px 14px rgba(0,0,0,.45), inset 0 1px 3px rgba(255,255,255,.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; z-index: 20;
+      transition: opacity .4s ease, transform .4s ease;
+    }
+    #seal.hidden { opacity: 0; transform: translate(-50%,-50%) scale(0); pointer-events:none; }
+
+    /* ══ ЗАПИСКА ════════════════════════════════════════════ */
+    #note {
+      position: fixed; top: 50%; left: 50%;
+      width: 300px; padding: 30px 24px 22px;
+      background: var(--note-bg);
+      border-radius: 3px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.4), 2px 2px 0 #e8dfc0, 4px 4px 0 #ddd4b0;
+      text-align: center; z-index: 100;
+      pointer-events: none;
+      opacity: 0;
+      /* Початковий стан — маленька, в центрі конверту */
+      transform: translate(-50%, -50%) scale(0) rotate(-2deg);
+      background-image: repeating-linear-gradient(
+        transparent, transparent 27px, #e8e0c8 27px, #e8e0c8 28px
+      );
+      /* Transition за замовчуванням — для closing */
+      transition: transform .55s cubic-bezier(.4,0,.2,1), opacity .45s ease;
+    }
+
+    /* Фаза 1: вилітає вгору-вбік */
+    #note.fly-out {
+      opacity: 1;
+      transform: translate(-50%, calc(-50% - 80px)) scale(0.75) rotate(6deg);
+      transition: transform .38s cubic-bezier(.2,.8,.4,1), opacity .1s ease;
+    }
+    /* Фаза 2: осідає в центр */
+    #note.visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1) rotate(-1deg);
+      pointer-events: auto;
+      transition: transform .5s cubic-bezier(.34,1.45,.64,1), opacity .3s ease;
+    }
+    /* Закривання */
+    #note.hiding {
+      opacity: 0;
+      transform: translate(-50%, calc(-50% + 50px)) scale(0.08) rotate(8deg);
+      transition: transform .65s cubic-bezier(.4,0,.2,1), opacity .4s ease;
+    }
+
+    /* ── Секретна записка — золотий стиль ── */
+    #note.secret {
+      background: linear-gradient(145deg, #fffbe6, #fff8d0);
+      background-image: repeating-linear-gradient(
+        transparent, transparent 27px, #f0e8a0 27px, #f0e8a0 28px
+      );
+      box-shadow: 0 30px 80px rgba(0,0,0,.4), 2px 2px 0 #d4b840, 4px 4px 0 #b89820,
+                  0 0 40px rgba(255,215,0,.3);
+    }
+    #note.secret #note-text { color: #8b6800; text-shadow: 0 1px 3px rgba(200,150,0,.3); }
+    #note.secret #note-heart { animation: pulse-gold 1s ease-in-out infinite; }
+    @keyframes pulse-gold { 0%,100%{transform:scale(1)} 50%{transform:scale(1.3)} }
+
+    #secret-badge {
+      position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+      background: linear-gradient(135deg, #ffd700, #ff8c00);
+      color: #fff; font-size: 10px; letter-spacing: 1px;
+      padding: 3px 12px; border-radius: 20px;
+      box-shadow: 0 2px 10px rgba(255,165,0,.5);
+      display: none; white-space: nowrap;
+      font-family: 'Playfair Display', serif; font-style: italic;
+    }
+    #note.secret #secret-badge { display: block; }
+
+    #note-text {
+      font-family: 'Pacifico', cursive;
+      font-size: 21px; line-height: 1.55; color: var(--ink);
+      text-shadow: 1px 2px 0 rgba(139,0,0,.2), -1px -1px 0 rgba(200,50,50,.1);
+      letter-spacing: .5px; min-height: 72px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #note-heart {
+      display: block; margin-top: 8px; font-size: 20px;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.25)} }
+
+    #note-nav { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+    .nav-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 22px; color: var(--ink); opacity: .45;
+      transition: opacity .2s, transform .2s; padding: 2px 6px; line-height: 1;
+    }
+    .nav-btn:hover { opacity: 1; transform: scale(1.2); }
+    #note-counter { font-size: 11px; color: #a08060; letter-spacing: 1px; font-style: italic; }
+
+    /* Slide анімації карусель */
+    #note-text.sl-out-l { animation: slOL .22s ease forwards; }
+    #note-text.sl-out-r { animation: slOR .22s ease forwards; }
+    #note-text.sl-in-l  { animation: slIL .22s ease forwards; }
+    #note-text.sl-in-r  { animation: slIR .22s ease forwards; }
+    @keyframes slOL { to{opacity:0;transform:translateX(-28px)} }
+    @keyframes slOR { to{opacity:0;transform:translateX(28px)}  }
+    @keyframes slIL { from{opacity:0;transform:translateX(28px)}  to{opacity:1;transform:none} }
+    @keyframes slIR { from{opacity:0;transform:translateX(-28px)} to{opacity:1;transform:none} }
+
+    /* ══ ПЕРА ═══════════════════════════════════════════════ */
+    #feather-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+    .pop {
+      position: fixed; pointer-events: none; z-index: 200;
+      font-size: 28px; animation: pop-anim .5s ease forwards;
+    }
+    @keyframes pop-anim { 0%{transform:scale(1);opacity:1} 100%{transform:scale(3);opacity:0} }
+
+    /* ══ ПІДКАЗКИ ═══════════════════════════════════════════ */
+    #hint {
+      position: fixed; bottom: calc(22px + env(safe-area-inset-bottom));
+      left: 0; right: 0; text-align: center;
+      color: rgba(255,255,255,.4); font-size: 12px; font-style: italic;
+      letter-spacing: .5px; z-index: 3; pointer-events: none;
+    }
+    #progress-bar {
+      position: fixed; bottom: 0; left: 0; height: 3px; width: 0%;
+      background: rgba(255,255,255,.6); z-index: 200; transition: none;
+    }
+    #progress-bar.running { width: 100%; transition: width 10s linear; }
+
+    /* Тост */
+    #toast {
+      position: fixed; bottom: calc(60px + env(safe-area-inset-bottom));
+      left: 50%; transform: translateX(-50%) translateY(20px);
+      background: linear-gradient(135deg, #1a0a00, #3d1f00);
+      border: 1px solid rgba(255,200,50,.4);
+      color: #ffd060; font-size: 13px; font-style: italic;
+      padding: 10px 20px; border-radius: 30px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.4), 0 0 20px rgba(255,180,0,.2);
+      z-index: 300; pointer-events: none;
+      opacity: 0; transition: opacity .4s ease, transform .4s ease; white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ══ ПАНЕЛЬ ТЕМ ══════════════════════════════════════════ */
+    #theme-bar {
+      position: fixed; top: calc(16px + env(safe-area-inset-top));
+      right: 16px; display: flex; flex-direction: column;
+      align-items: flex-end; gap: 8px; z-index: 50;
+    }
+    #theme-dots { display: flex; gap: 8px; }
+    #theme-credit {
+      font-size: 9px; letter-spacing: .4px;
+      color: rgba(255,255,255,.3);
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      white-space: nowrap;
+    }
+    .theme-dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.45); cursor: pointer;
+      transition: transform .2s, border-color .2s; box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    }
+    .theme-dot:hover { transform: scale(1.25); border-color: #fff; }
+    .theme-dot.active { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.3); }
+
+    /* ══ КНОПКА РЕДАГУВАННЯ ══════════════════════════════════ */
+    #edit-btn {
+      position: fixed; top: calc(16px + env(safe-area-inset-top)); left: 16px;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(255,255,255,.15); border: 1.5px solid rgba(255,255,255,.4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; cursor: pointer; z-index: 50;
+      transition: background .2s, transform .2s; backdrop-filter: blur(4px);
+    }
+    #edit-btn:hover { background: rgba(255,255,255,.28); transform: scale(1.1); }
+
+    /* ══ ПІДКАЗКА ТРИМАЙ ═════════════════════════════════════ */
+    #hold-hint {
+      position: fixed; top: calc(16px + env(safe-area-inset-top));
+      left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.22); color: rgba(255,255,255,.65);
+      font-size: 11px; padding: 5px 14px; border-radius: 20px;
+      letter-spacing: .5px; pointer-events: none;
+      opacity: 0; transition: opacity .4s; z-index: 10; white-space: nowrap;
+    }
+    #hold-hint.show { opacity: 1; }
+
+    /* ══ МОДАЛКИ ═════════════════════════════════════════════ */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(6px);
+      z-index: 500; display: none; align-items: center; justify-content: center;
+      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    }
+    .modal-overlay.open { display: flex; }
+
+    #edit-box {
+      background: #fffdf4; border-radius: 10px;
+      padding: 28px 24px; width: min(480px, 92vw);
+      box-shadow: 0 30px 80px rgba(0,0,0,.4);
+    }
+    #edit-box h2 { font-style:italic; color:#8b2020; margin-bottom:18px; font-size:18px; text-align:center; }
+    #messages-list {
+      display: flex; flex-direction: column; gap: 8px;
+      max-height: 260px; overflow-y: auto; margin-bottom: 12px; padding-right: 4px;
+    }
+    .msg-row { display: flex; gap: 8px; align-items: flex-start; }
+    .msg-input {
+      flex: 1; padding: 7px 10px; border: 1.5px solid #e0d0b0; border-radius: 6px;
+      font-family: 'Pacifico', cursive; font-size: 12px; color: #8b2020;
+      background: #fffef8; resize: none; height: 52px; transition: border-color .2s;
+    }
+    .msg-input:focus { outline: none; border-color: #c0392b; }
+    .msg-del {
+      background: none; border: 1.5px solid #e0c0b0; border-radius: 6px;
+      width: 32px; height: 32px; cursor: pointer; font-size: 13px;
+      color: #b05040; transition: background .2s; flex-shrink: 0; margin-top: 10px;
+    }
+    .msg-del:hover { background: #fce; }
+    #add-msg-btn {
+      width: 100%; padding: 8px; background: none;
+      border: 1.5px dashed #c8a96e; border-radius: 6px;
+      cursor: pointer; font-size: 13px; color: #9a7040;
+      transition: background .2s; margin-bottom: 14px;
+    }
+    #add-msg-btn:hover { background: #fef8ec; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .btn-cancel, .btn-save {
+      padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer;
+      font-size: 13px; transition: opacity .2s, transform .2s;
+    }
+    .btn-cancel { background: #f0ece0; color: #806040; }
+    .btn-save   { background: #c0392b; color: #fff; font-weight: bold; }
+    .btn-cancel:hover, .btn-save:hover { opacity: .85; transform: scale(1.03); }
+
+    #stats-box {
+      background: linear-gradient(145deg, #1a0a0a, #2d1010);
+      border: 1px solid rgba(200,100,60,.3); border-radius: 14px;
+      padding: 32px 26px; width: min(360px, 88vw);
+      box-shadow: 0 40px 100px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,200,150,.1);
+      color: #f0d0b0; text-align: center;
+    }
+    #stats-box h2 {
+      font-family: 'Pacifico', cursive; font-size: 20px; color: #e88060;
+      margin-bottom: 22px; text-shadow: 0 2px 10px rgba(200,80,40,.5);
+    }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+    .stat-card {
+      background: rgba(255,255,255,.05); border: 1px solid rgba(255,200,150,.12);
+      border-radius: 8px; padding: 14px 8px;
+    }
+    .stat-num { font-family:'Pacifico',cursive; font-size:30px; color:#f4a06a; line-height:1; }
+    .stat-label { font-size:10px; color:rgba(240,200,160,.5); margin-top:5px; letter-spacing:.5px; font-style:italic; }
+    .stat-wide {
+      grid-column:1/-1; background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,200,150,.1); border-radius:8px; padding:12px;
+    }
+    .stat-wide .stat-label { font-size:11px; margin-top:0; margin-bottom:5px; }
+    .stat-date { font-size:13px; color:#e8c090; font-style:italic; }
+    .ring-wrap { grid-column:1/-1; display:flex; flex-direction:column; align-items:center; gap:5px; }
+    .ring-svg circle { transition:stroke-dashoffset .9s cubic-bezier(.4,0,.2,1); }
+    .ring-pct { font-family:'Pacifico',cursive; font-size:15px; color:#f4a06a; }
+    #s-secret-row {
+      grid-column:1/-1;
+      background:linear-gradient(135deg,rgba(255,215,0,.06),rgba(255,140,0,.06));
+      border:1px solid rgba(255,215,0,.2); border-radius:8px; padding:12px;
+    }
+    #s-secret-row .stat-label { color:rgba(255,210,80,.6); }
+    #s-secret-val { font-size:13px; color:#ffd060; font-style:italic; }
+    #stats-close {
+      width:100%; padding:9px; background:rgba(200,60,40,.55); border:none;
+      border-radius:8px; color:#fff; cursor:pointer; font-size:13px;
+      letter-spacing:.5px; transition:background .2s;
+    }
+    #stats-close:hover { background:rgba(200,60,40,.9); }
+
+    /* ══ PWA INSTALL BANNER (тільки iOS) ═════════════════════ */
+    #install-banner {
+      position: fixed; bottom: calc(50px + env(safe-area-inset-bottom));
+      left: 50%; transform: translateX(-50%);
+      background: rgba(20,8,4,.88); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,200,120,.25);
+      color: rgba(255,230,180,.9); font-size: 12px;
+      padding: 12px 18px; border-radius: 14px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.5);
+      z-index: 400; display: none;
+      max-width: min(320px, 88vw); text-align: center; line-height: 1.5;
+    }
+    #install-banner.show { display: block; animation: bannerIn .4s ease; }
+    #install-banner strong { color: #ffd090; }
+    #install-banner .close-banner {
+      position: absolute; top: 6px; right: 10px;
+      background: none; border: none; color: rgba(255,200,120,.6);
+      cursor: pointer; font-size: 16px; line-height: 1; padding: 2px;
+    }
+    @keyframes bannerIn { from{opacity:0;transform:translateX(-50%) translateY(10px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+  </style>
+</head>
+<body>
+
+<canvas id="feather-canvas"></canvas>
+<button id="edit-btn" title="Редагувати записки">✏️</button>
+<div id="theme-bar">
+  <div id="theme-dots"></div>
+  <span id="theme-credit">created by Serhii Pelykh</span>
+</div>
+<div id="hold-hint">утримуй для статистики 📊</div>
+<div id="toast">🔓 Секретна записка розблокована!</div>
+
+<!-- iOS install banner -->
+<div id="install-banner">
+  <button class="close-banner" id="close-banner">×</button>
+  Встанови як додаток:<br>
+  тисни <strong>Поділитись</strong> → <strong>«На екран "Додому"»</strong>
+</div>
+
+<!-- КОНВЕРТ -->
+<div id="scene" title="Натисни ✉️">
+  <div id="envelope">
+    <div id="fold-bottom"></div>
+    <div id="envelope-line"></div>
+    <div id="seal">💌</div>
+  </div>
+  <!-- Клапан винесений окремо для правильної перспективи -->
+  <div id="flap-wrap">
+    <div id="flap"></div>
+  </div>
+</div>
+
+<!-- ЗАПИСКА -->
+<div id="note">
+  <div id="secret-badge">✨ особлива записка ✨</div>
+  <div id="note-text"></div>
+  <span id="note-heart">🌸</span>
+  <div id="note-nav">
+    <button class="nav-btn" id="prev-btn">‹</button>
+    <span id="note-counter">1 / 10</span>
+    <button class="nav-btn" id="next-btn">›</button>
+  </div>
+</div>
+
+<div id="progress-bar"></div>
+<p id="hint">натисни · гортай · лопай пера · тримай для статистики</p>
+
+<!-- РЕДАГУВАННЯ -->
+<div id="edit-modal" class="modal-overlay">
+  <div id="edit-box">
+    <h2>✍️ Мої записки для неї</h2>
+    <div id="messages-list"></div>
+    <button id="add-msg-btn">＋ додати нову записку</button>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="edit-cancel">Скасувати</button>
+      <button class="btn-save"   id="edit-save">Зберегти 💾</button>
+    </div>
+  </div>
+</div>
+
+<!-- СТАТИСТИКА -->
+<div id="stats-modal" class="modal-overlay">
+  <div id="stats-box">
+    <h2>💌 Наша статистика</h2>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-num" id="s-opens">0</div>
+        <div class="stat-label">разів відкрито</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="s-feathers">0</div>
+        <div class="stat-label">пер зловлено</div>
+      </div>
+      <div class="stat-wide">
+        <div class="stat-label">останнє відкриття</div>
+        <div class="stat-date" id="s-last">—</div>
+      </div>
+      <div id="s-secret-row">
+        <div class="stat-label">секретна записка</div>
+        <div id="s-secret-val">—</div>
+      </div>
+      <div class="ring-wrap">
+        <div class="stat-label">записок прочитано</div>
+        <svg class="ring-svg" width="80" height="80" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,200,150,.1)" stroke-width="8"/>
+          <circle id="ring-arc" cx="40" cy="40" r="32" fill="none"
+                  stroke="#f4a06a" stroke-width="8" stroke-linecap="round"
+                  stroke-dasharray="201" stroke-dashoffset="201"
+                  transform="rotate(-90 40 40)"/>
+        </svg>
+        <div class="ring-pct" id="s-pct">0 / 0</div>
+      </div>
+    </div>
+    <button id="stats-close">Закрити</button>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   PWA MANIFEST — генерується динамічно як blob
+   Це дозволяє мати один index.html без додаткових файлів
+══════════════════════════════════════════════════════════════ */
+(function injectManifest() {
+  const manifest = {
+    name: 'For You 💌',
+    short_name: 'For You',
+    description: 'A little love letter for you',
+    start_url: './',
+    display: 'standalone',
+    orientation: 'portrait',
+    background_color: '#c0392b',
+    theme_color: '#c0392b',
+    icons: [
+      { src: generateIconDataURL(192), sizes: '192x192', type: 'image/png' },
+      { src: generateIconDataURL(512), sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+    ]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+  document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+})();
+
+/**
+ * Генеруємо іконку програматично через Canvas.
+ * Результат: PNG з градієнтним фоном + emoji конверту.
+ * Без зовнішніх файлів — все в одному HTML.
+ */
+function generateIconDataURL(size) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const cx = c.getContext('2d');
+
+  // Фон — градієнт теми
+  const grad = cx.createLinearGradient(0, 0, size, size);
+  grad.addColorStop(0, '#c0392b');
+  grad.addColorStop(1, '#e67e22');
+  cx.fillStyle = grad;
+  cx.beginPath();
+  // Rounded rect
+  const r = size * 0.22;
+  cx.moveTo(r, 0); cx.lineTo(size-r, 0);
+  cx.quadraticCurveTo(size, 0, size, r);
+  cx.lineTo(size, size-r);
+  cx.quadraticCurveTo(size, size, size-r, size);
+  cx.lineTo(r, size); cx.quadraticCurveTo(0, size, 0, size-r);
+  cx.lineTo(0, r); cx.quadraticCurveTo(0, 0, r, 0);
+  cx.closePath();
+  cx.fill();
+
+  // Emoji конверту по центру
+  cx.font = `${size * 0.55}px serif`;
+  cx.textAlign = 'center';
+  cx.textBaseline = 'middle';
+  cx.fillText('💌', size / 2, size / 2 + size * 0.03);
+
+  return c.toDataURL('image/png');
+}
+
+/* Також встановлюємо apple-touch-icon через JS */
+(function setAppleIcon() {
+  const link = document.createElement('link');
+  link.rel = 'apple-touch-icon';
+  link.href = generateIconDataURL(180);
+  document.head.appendChild(link);
+})();
+
+/* ══════════════════════════════════════════════════════════════
+   СТРУКТУРА ДАНИХ (localStorage: "loveLetter2")
+   {
+     openCount, lastOpened, feathersPoppedTotal,
+     currentIndex, seenMask, messages[], themeIndex,
+     secretUnlocked, randomQueue[],
+     installBannerDismissed: bool  ← нове
+   }
+══════════════════════════════════════════════════════════════ */
+
+  const DEFAULT_MESSAGES = [
+    'Я тебе кохаю,\nсонечко! ☀️',
+    'Ти моє найкраще,\nщо сталось зі мною 💫',
+    'Цей день буде\nказковим — бо є ти! 🌸',
+    'Ти сильніша, ніж\nдумаєш, зіронько ⭐',
+    'Кожен твій крок —\nце маленька перемога 🏆',
+    'Посміхнись — ти\nнеймовірна! 😊',
+    'Сьогодні будь\nтрохи ніжніша до себе 🌷',
+    'Ти освітлюєш мій\nсвіт щодня 🌙',
+    'Ніхто у світі\nне має такої посмішки 💋',
+    'Я пишаюся тобою\nщохвилини ❤️‍🔥'
+  ];
+
+  const SECRET_MESSAGE  = 'Ти відкрила це\n10 разів... Я так\nтебе люблю! 🌹✨';
+  const SECRET_HEART    = '💛';
+  const SECRET_UNLOCK_AT = 10;
+
+  const THEMES = [
+    { name:'Полум\'я', top:'#c0392b', bottom:'#e67e22', dot:'linear-gradient(135deg,#c0392b,#e67e22)' },
+    { name:'Ніч',      top:'#1a1a2e', bottom:'#6a1e55', dot:'linear-gradient(135deg,#1a1a2e,#6a1e55)' },
+    { name:'Захід',    top:'#ff6b6b', bottom:'#feca57', dot:'linear-gradient(135deg,#ff6b6b,#feca57)' },
+    { name:'Море',     top:'#1e3c72', bottom:'#2a9d8f', dot:'linear-gradient(135deg,#1e3c72,#2a9d8f)' },
+    { name:'Рожевий',  top:'#c94b9d', bottom:'#f89b6b', dot:'linear-gradient(135deg,#c94b9d,#f89b6b)' },
+  ];
+
+  const STORAGE_KEY = 'loveLetter2';
+  const DEFAULT_STATE = {
+    openCount:0, lastOpened:null, feathersPoppedTotal:0,
+    currentIndex:0, seenMask:0, messages:[...DEFAULT_MESSAGES],
+    themeIndex:0, secretUnlocked:false, randomQueue:[],
+    installBannerDismissed: false
+  };
+
+  /* ── CRUD ── */
+  function loadState() {
+    try {
+      const r = localStorage.getItem(STORAGE_KEY);
+      if (!r) return {...DEFAULT_STATE, messages:[...DEFAULT_MESSAGES]};
+      return {...DEFAULT_STATE, ...JSON.parse(r)};
+    } catch { return {...DEFAULT_STATE, messages:[...DEFAULT_MESSAGES]}; }
+  }
+  function saveState(s)     { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+  function updateState(p)   { Object.assign(appState, p); saveState(appState); }
+  function addMessage(t)    { appState.messages.push(t); saveState(appState); }
+  function editMessage(i,t) { appState.messages[i]=t; appState.seenMask&=~(1<<i); saveState(appState); }
+  function deleteMessage(i) {
+    appState.messages.splice(i,1);
+    let m=0;
+    for(let a=0,b=0;a<appState.messages.length+1;a++){
+      if(a===i)continue;
+      if(appState.seenMask&(1<<a))m|=(1<<b);
+      b++;
+    }
+    appState.seenMask=m;
+    if(appState.currentIndex>=appState.messages.length)
+      appState.currentIndex=Math.max(0,appState.messages.length-1);
+    saveState(appState);
+  }
+
+  let appState = loadState();
+
+  /* ══════════════════════════════════════════════════════════
+     🔊 ЗВУКИ — Web Audio API
+  ══════════════════════════════════════════════════════════ */
+  let audioCtx = null;
+  function getAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }
+
+  /* Шелест паперу: білий шум → BandPass 2.2kHz */
+  function soundRustle() {
+    try {
+      const ac=getAudio(), dur=0.7;
+      const buf=ac.createBuffer(1,ac.sampleRate*dur,ac.sampleRate);
+      const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+      const src=ac.createBufferSource(); src.buffer=buf;
+      const bp=ac.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=2200; bp.Q.value=0.6;
+      const hp=ac.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=800;
+      const gain=ac.createGain(); const now=ac.currentTime;
+      gain.gain.setValueAtTime(0,now);
+      gain.gain.linearRampToValueAtTime(0.16,now+0.08);
+      gain.gain.linearRampToValueAtTime(0.1,now+0.25);
+      gain.gain.linearRampToValueAtTime(0,now+dur);
+      src.connect(bp); bp.connect(hp); hp.connect(gain); gain.connect(ac.destination);
+      src.start(now); src.stop(now+dur);
+    } catch(e){}
+  }
+
+  /* Пух при лопанні пера */
+  function soundPuff() {
+    try {
+      const ac=getAudio(), now=ac.currentTime;
+      const osc=ac.createOscillator(), gO=ac.createGain();
+      osc.type='sine'; osc.frequency.setValueAtTime(200,now);
+      osc.frequency.exponentialRampToValueAtTime(60,now+0.12);
+      gO.gain.setValueAtTime(0.22,now); gO.gain.linearRampToValueAtTime(0,now+0.12);
+      osc.connect(gO); gO.connect(ac.destination); osc.start(now); osc.stop(now+0.13);
+      const nb=ac.createBuffer(1,Math.floor(ac.sampleRate*0.08),ac.sampleRate);
+      const nd=nb.getChannelData(0);
+      for(let i=0;i<nd.length;i++) nd[i]=(Math.random()*2-1)*(1-i/nd.length);
+      const ns=ac.createBufferSource(); ns.buffer=nb;
+      const gN=ac.createGain(); gN.gain.setValueAtTime(0.08,now);
+      gN.gain.linearRampToValueAtTime(0,now+0.08);
+      ns.connect(gN); gN.connect(ac.destination); ns.start(now);
+    } catch(e){}
+  }
+
+  /* Магічний дзвін при секреті */
+  function soundSecretUnlock() {
+    try {
+      const ac=getAudio(), now=ac.currentTime;
+      [523.25,659.25,783.99].forEach((freq,i)=>{
+        const t=now+i*0.18;
+        const o=ac.createOscillator(), g=ac.createGain();
+        o.type='sine'; o.frequency.value=freq;
+        g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.2,t+0.02);
+        g.gain.exponentialRampToValueAtTime(0.001,t+0.9);
+        o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+0.95);
+        const o2=ac.createOscillator(), g2=ac.createGain();
+        o2.type='triangle'; o2.frequency.value=freq*2; g2.gain.value=0.04;
+        o2.connect(g2); g2.connect(ac.destination); o2.start(t); o2.stop(t+0.95);
+      });
+    } catch(e){}
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     🔀 РАНДОМНА ЧЕРГА (Fisher-Yates)
+  ══════════════════════════════════════════════════════════ */
+  function shuffle(arr) {
+    for(let i=arr.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]]=[arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function nextRandomIndex() {
+    const total=appState.messages.length;
+    if(!total) return 0;
+    const valid=(appState.randomQueue||[]).filter(i=>i<total);
+    if(!valid.length) {
+      const q=shuffle([...Array(total).keys()]);
+      appState.randomQueue=q.slice(1); saveState(appState); return q[0];
+    }
+    appState.randomQueue=valid.slice(1); saveState(appState); return valid[0];
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     🔐 СЕКРЕТНА ЗАПИСКА
+  ══════════════════════════════════════════════════════════ */
+  const toast = document.getElementById('toast');
+
+  function checkSecretUnlock() {
+    if(!appState.secretUnlocked && appState.openCount>=SECRET_UNLOCK_AT){
+      updateState({secretUnlocked:true});
+      showToast('🔓 Секретна записка розблокована!');
+      soundSecretUnlock();
+    }
+  }
+  function showToast(msg, dur=3500) {
+    toast.textContent=msg; toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'),dur);
+  }
+  function shouldShowSecret() {
+    if(!appState.secretUnlocked) return false;
+    if(appState.openCount===SECRET_UNLOCK_AT) return true;
+    return Math.random()<0.2;
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     🎨 ТЕМИ
+  ══════════════════════════════════════════════════════════ */
+  function applyTheme(idx) {
+    const t=THEMES[idx];
+    document.documentElement.style.setProperty('--bg-top',    t.top);
+    document.documentElement.style.setProperty('--bg-bottom', t.bottom);
+    // Оновлюємо theme-color для статус-бару iOS
+    document.getElementById('theme-color-meta').content = t.top;
+    document.querySelectorAll('.theme-dot').forEach((d,i)=>d.classList.toggle('active',i===idx));
+    updateState({themeIndex:idx});
+  }
+  function buildThemeBar() {
+    const bar=document.getElementById('theme-dots');
+    THEMES.forEach((t,i)=>{
+      const btn=document.createElement('button');
+      btn.className='theme-dot'; btn.title=t.name; btn.style.background=t.dot;
+      btn.addEventListener('click',()=>applyTheme(i));
+      bar.appendChild(btn);
+    });
+  }
+  buildThemeBar();
+  applyTheme(appState.themeIndex);
+
+  /* ══════════════════════════════════════════════════════════
+     📜 КАРУСЕЛЬ ЗАПИСОК
+  ══════════════════════════════════════════════════════════ */
+  const noteEl      = document.getElementById('note');
+  const noteText    = document.getElementById('note-text');
+  const noteCounter = document.getElementById('note-counter');
+  const noteHeart   = document.getElementById('note-heart');
+  let activeIdx     = appState.currentIndex;
+
+  function showMessage(newIdx, direction='none') {
+    const msgs=appState.messages;
+    if(!msgs.length) return;
+    newIdx=((newIdx%msgs.length)+msgs.length)%msgs.length;
+    const outCls=direction==='next'?'sl-out-l':direction==='prev'?'sl-out-r':'';
+    const inCls =direction==='next'?'sl-in-l' :direction==='prev'?'sl-in-r' :'';
+
+    function setContent() {
+      noteEl.classList.remove('secret');
+      noteHeart.textContent='🌸';
+      noteText.innerHTML=msgs[newIdx].replace(/\n/g,'<br>');
+      noteCounter.textContent=`${newIdx+1} / ${msgs.length}`;
+      activeIdx=newIdx;
+      appState.seenMask|=(1<<newIdx);
+      updateState({currentIndex:newIdx, seenMask:appState.seenMask});
+    }
+
+    if(outCls){
+      noteText.classList.add(outCls);
+      setTimeout(()=>{
+        noteText.classList.remove(outCls); setContent();
+        if(inCls){noteText.classList.add(inCls);setTimeout(()=>noteText.classList.remove(inCls),240);}
+      },220);
+    } else { setContent(); }
+  }
+
+  function showSecretMessage() {
+    noteEl.classList.add('secret');
+    noteText.innerHTML=SECRET_MESSAGE.replace(/\n/g,'<br>');
+    noteHeart.textContent=SECRET_HEART;
+    noteCounter.textContent='✨ особлива ✨';
+  }
+
+  document.getElementById('prev-btn').addEventListener('click',e=>{
+    e.stopPropagation(); soundRustle(); showMessage(activeIdx-1,'prev');
+  });
+  document.getElementById('next-btn').addEventListener('click',e=>{
+    e.stopPropagation(); soundRustle(); showMessage(activeIdx+1,'next');
+  });
+
+  /* ══════════════════════════════════════════════════════════
+     ✉️ КОНВЕРТ — відкриття з анімацією вильоту записки
+     Хореографія:
+       0ms   — клапан відкривається
+       350ms — записка вилітає (fly-out: вгору + трохи вбік)
+       700ms — записка плавно осідає в центр (visible)
+  ══════════════════════════════════════════════════════════ */
+  const scene    = document.getElementById('scene');
+  const flapWrap = document.getElementById('flap-wrap');
+  const seal     = document.getElementById('seal');
+  const note     = document.getElementById('note');
+  const progress = document.getElementById('progress-bar');
+  const holdHint = document.getElementById('hold-hint');
+
+  let isOpen=false, closeTimer=null;
+  let holdTimer=null, holdFired=false;
+
+  function startHold(){holdFired=false;holdTimer=setTimeout(()=>{holdFired=true;openStats();},700);}
+  function endHold(){clearTimeout(holdTimer);}
+
+  scene.addEventListener('mousedown',  startHold);
+  scene.addEventListener('touchstart', startHold, {passive:true});
+  scene.addEventListener('mouseup',    endHold);
+  scene.addEventListener('mouseleave', endHold);
+  scene.addEventListener('touchend',   endHold);
+
+  function openEnvelope() {
+    if(isOpen) return;
+    isOpen=true;
+    flapWrap.classList.add('open');
+    seal.classList.add('hidden');
+    holdHint.classList.remove('show');
+
+    updateState({openCount:appState.openCount+1, lastOpened:new Date().toISOString()});
+    checkSecretUnlock();
+
+    const showSecret=shouldShowSecret();
+    const randomIdx=nextRandomIndex();
+
+    // Фаза 1: записка "вилітає" з конверту — через 350мс
+    setTimeout(()=>{
+      soundRustle();
+      if(showSecret){ showSecretMessage(); } else { showMessage(randomIdx,'none'); }
+      // Спочатку ставимо fly-out (вгору-вбік)
+      note.classList.remove('hiding');
+      note.classList.add('fly-out');
+    }, 350);
+
+    // Фаза 2: через ще 380мс — осідає в центр
+    setTimeout(()=>{
+      note.classList.remove('fly-out');
+      note.classList.add('visible');
+    }, 730);
+
+    progress.classList.remove('running');
+    void progress.offsetWidth;
+    progress.classList.add('running');
+    clearTimeout(closeTimer);
+    closeTimer=setTimeout(closeEnvelope, 10000);
+  }
+
+  function closeEnvelope() {
+    if(!isOpen) return;
+    isOpen=false;
+    clearTimeout(closeTimer);
+    note.classList.remove('visible','fly-out');
+    note.classList.add('hiding');
+    setTimeout(()=>{flapWrap.classList.remove('open'); seal.classList.remove('hidden');},300);
+    setTimeout(()=>{note.classList.remove('hiding','secret');},800);
+    progress.classList.remove('running');
+  }
+
+  scene.addEventListener('click',()=>{
+    if(holdFired) return;
+    isOpen ? closeEnvelope() : openEnvelope();
+  });
+
+  setTimeout(()=>holdHint.classList.add('show'),   3000);
+  setTimeout(()=>holdHint.classList.remove('show'), 6500);
+
+  /* ══════════════════════════════════════════════════════════
+     📊 СТАТИСТИКА
+  ══════════════════════════════════════════════════════════ */
+  const statsModal=document.getElementById('stats-modal');
+
+  function countSeen(){
+    let n=0;
+    for(let i=0;i<appState.messages.length;i++) if(appState.seenMask&(1<<i)) n++;
+    return n;
+  }
+
+  function openStats() {
+    if(isOpen) closeEnvelope();
+    document.getElementById('s-opens').textContent    = appState.openCount;
+    document.getElementById('s-feathers').textContent = appState.feathersPoppedTotal;
+    if(appState.lastOpened){
+      const d=new Date(appState.lastOpened);
+      document.getElementById('s-last').textContent=
+        d.toLocaleDateString('uk-UA',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    } else { document.getElementById('s-last').textContent='ще не відкривали'; }
+
+    const left=Math.max(0,SECRET_UNLOCK_AT-appState.openCount);
+    document.getElementById('s-secret-val').textContent=
+      appState.secretUnlocked ? '🌹 розблокована!' : `ще ${left} відкривань`;
+
+    const seen=countSeen(), total=appState.messages.length;
+    const circ=2*Math.PI*32;
+    document.getElementById('ring-arc').style.strokeDashoffset=circ*(1-(total?seen/total:0));
+    document.getElementById('s-pct').textContent=`${seen} / ${total}`;
+    statsModal.classList.add('open');
+  }
+
+  document.getElementById('stats-close').addEventListener('click',()=>statsModal.classList.remove('open'));
+  statsModal.addEventListener('click',e=>{if(e.target===statsModal)statsModal.classList.remove('open');});
+
+  /* ══════════════════════════════════════════════════════════
+     ✏️ РЕДАГУВАННЯ
+  ══════════════════════════════════════════════════════════ */
+  const editModal=document.getElementById('edit-modal');
+  const msgList  =document.getElementById('messages-list');
+
+  function renderEditList(){
+    msgList.innerHTML='';
+    appState.messages.forEach((msg,i)=>{
+      const row=document.createElement('div'); row.className='msg-row';
+      const ta=document.createElement('textarea');
+      ta.className='msg-input'; ta.value=msg;
+      ta.placeholder='Введи текст записки…'; ta.dataset.idx=i;
+      const del=document.createElement('button');
+      del.className='msg-del'; del.title='Видалити'; del.textContent='✕';
+      del.addEventListener('click',()=>{
+        if(appState.messages.length<=1){alert('Залиш хоча б одну записку 💌');return;}
+        deleteMessage(i); renderEditList();
+      });
+      row.appendChild(ta); row.appendChild(del); msgList.appendChild(row);
+    });
+  }
+
+  document.getElementById('edit-btn').addEventListener('click',()=>{
+    if(isOpen)closeEnvelope();
+    renderEditList(); editModal.classList.add('open');
+  });
+  document.getElementById('add-msg-btn').addEventListener('click',()=>{
+    addMessage(''); renderEditList();
+    msgList.scrollTop=msgList.scrollHeight;
+    msgList.lastElementChild?.querySelector('textarea')?.focus();
+  });
+  document.getElementById('edit-save').addEventListener('click',()=>{
+    msgList.querySelectorAll('.msg-input').forEach((ta,i)=>{
+      const v=ta.value.trim();
+      if(i<appState.messages.length && v!==appState.messages[i]) editMessage(i,v);
+    });
+    appState.messages=appState.messages.filter(m=>m.trim()!=='');
+    if(!appState.messages.length) appState.messages=[...DEFAULT_MESSAGES];
+    appState.randomQueue=[];
+    activeIdx=Math.min(activeIdx,appState.messages.length-1);
+    saveState(appState); editModal.classList.remove('open');
+  });
+  document.getElementById('edit-cancel').addEventListener('click',()=>editModal.classList.remove('open'));
+  editModal.addEventListener('click',e=>{if(e.target===editModal)editModal.classList.remove('open');});
+
+  /* ══════════════════════════════════════════════════════════
+     🪶 ПЕРА
+  ══════════════════════════════════════════════════════════ */
+  const canvas=document.getElementById('feather-canvas');
+  const ctx=canvas.getContext('2d');
+  let feathers=[];
+
+  function resizeCanvas(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+  resizeCanvas(); window.addEventListener('resize',resizeCanvas);
+
+  function createFeather(randomY=false){
+    const size=12+Math.random()*22;
+    return {
+      x:Math.random()*window.innerWidth,
+      y:randomY?Math.random()*window.innerHeight:-size,
+      vx:(Math.random()-.5)*.8, vy:.4+Math.random()*.7,
+      size, angle:Math.random()*Math.PI*2,
+      rotSpeed:(Math.random()-.5)*.03,
+      opacity:.55+Math.random()*.35, alive:true
+    };
+  }
+  function initFeathers(){
+    feathers=Array.from({length:20+Math.floor(Math.random()*31)},()=>createFeather(true));
+  }
+  initFeathers();
+
+  function drawFeather(f){
+    ctx.save(); ctx.translate(f.x,f.y); ctx.rotate(f.angle); ctx.globalAlpha=f.opacity;
+    const s=f.size;
+    ctx.beginPath(); ctx.moveTo(0,-s*.9); ctx.lineTo(0,s*.9);
+    ctx.strokeStyle='rgba(255,255,255,.9)'; ctx.lineWidth=s*.06; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,-s*.8);
+    ctx.bezierCurveTo(-s*.6,-s*.2,-s*.7,s*.4,0,s*.9);
+    ctx.fillStyle='rgba(255,255,255,.75)'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0,-s*.8);
+    ctx.bezierCurveTo(s*.6,-s*.2,s*.7,s*.4,0,s*.9);
+    ctx.fillStyle='rgba(255,255,255,.6)'; ctx.fill();
+    ctx.restore();
+  }
+
+  function animate(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    feathers.forEach((f,i)=>{
+      if(!f.alive) return;
+      f.x+=f.vx+Math.sin(Date.now()*.001+i)*.3;
+      f.y+=f.vy; f.angle+=f.rotSpeed;
+      if(f.y>window.innerHeight+f.size){f.y=-f.size;f.x=Math.random()*window.innerWidth;}
+      drawFeather(f);
+    });
+    requestAnimationFrame(animate);
+  }
+  animate();
+
+  document.addEventListener('click',e=>{
+    const ui=[scene,editModal,statsModal,
+              document.getElementById('theme-bar'),
+              document.getElementById('edit-btn')];
+    if(ui.some(el=>el.contains(e.target))) return;
+    if(note.classList.contains('visible')&&note.contains(e.target)) return;
+
+    feathers.forEach(f=>{
+      if(!f.alive) return;
+      if(Math.hypot(f.x-e.clientX,f.y-e.clientY)<f.size*.9){
+        f.alive=false; soundPuff(); spawnPop(f.x,f.y);
+        updateState({feathersPoppedTotal:appState.feathersPoppedTotal+1});
+        setTimeout(()=>{
+          f.alive=true; f.x=Math.random()*window.innerWidth;
+          f.y=-f.size; f.opacity=.55+Math.random()*.35;
+        },800);
+      }
+    });
+  });
+
+  function spawnPop(x,y){
+    const el=document.createElement('span');
+    el.className='pop'; el.textContent='✨';
+    el.style.cssText=`left:${x-14}px;top:${y-14}px`;
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(),500);
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     📲 iOS INSTALL BANNER
+     Показуємо підказку "Додати на екран Додому" тільки на iOS
+     в Safari (не в standalone режимі — значить вже встановлено)
+  ══════════════════════════════════════════════════════════ */
+  (function checkInstallPrompt() {
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.navigator.standalone === true;
+    const isDismissed = appState.installBannerDismissed;
+
+    if (isIOS && !isStandalone && !isDismissed) {
+      // Показуємо банер через 4 секунди після завантаження
+      setTimeout(() => {
+        document.getElementById('install-banner').classList.add('show');
+      }, 4000);
+    }
+  })();
+
+  document.getElementById('close-banner').addEventListener('click', () => {
+    document.getElementById('install-banner').classList.remove('show');
+    updateState({ installBannerDismissed: true });
+  });
+
+  /* ── Дебаг ── */
+  console.log('%c💌 For You — State:', 'color:#c0392b;font-weight:bold', appState);
+  console.log('Reset: localStorage.removeItem("loveLetter2")');
+</script>
+</body>
+</html>
